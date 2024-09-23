@@ -1,0 +1,433 @@
+---
+title: "FIRST ASSIGNMENT OF IML CONTINUED AND END"
+output: pdf_document
+date: "2024-03-25"
+author: "Eliane Mopo"
+---
+
+```{r setup, include=FALSE}
+library(mlr3)
+library(mlr3learners)
+library(OpenML)
+library(mlr3pipelines)
+library(caret)
+library(mlr3tuning)
+library(mlr3mbo)
+library(glmnet)
+library(Matrix)
+library(kknn)
+library(mlr)  
+library(rpart) 
+library(rpart.plot)
+#library(ranger)
+```
+
+
+PART 2 (Frisch–Waugh–Lovell theorem)
+
+```{r cars}
+#Fetch and edit the data
+bike_data = getOMLDataSet(data.id = 42713)
+bike_data$data <- bike_data$data[,-c(7,13,14)] ## remove casual and registered as sum of the two is count. also remove working day due to collinearity.
+
+### convert dates to factors 
+bike_data$data$year <- factor(bike_data$data$year)
+bike_data$data$month <- factor(bike_data$data$month)
+bike_data$data$hour <- factor(bike_data$data$hour)
+bike_data$data$weekday <- factor(bike_data$data$weekday)
+print(bike_data$data)
+```
+
+
+a.) Run simple least squares linear regression with response being count and predictor equal windspeed. Report the coefficient you get.
+
+
+```{r}
+# Defining the linear regression model and runing it
+model <- lm(count ~ windspeed, data = bike_data$data)
+
+# Print coefficients
+print(model$coefficients)
+```
+
+b.) Run least squares linear regression with response being count and predictor being all remaining variables. Don’t forget to create a graph to dummy-encode the factor variables. Report the coefficient you get for windspeed.
+
+
+```{r}
+#Define the dummy formula
+formula_dummy <- ~ . - year - windspeed- count 
+
+# Define a sparse matrix using the dummyVars function
+matrix_dummy <- dummyVars(formula_dummy, data = bike_data$data)
+data_dummy <- as.data.frame(predict(matrix_dummy, newdata = bike_data$data, type = "response")) # Convert the sparse matrix to a matrix
+data_dummy <- cbind(data_dummy, bike_data$data[, c("windspeed", "count", "year")]) # Add the windspeed and count variables to the data frame
+linear_model_formula <- as.formula("count ~ .")
+model <- lm(linear_model_formula, data = data_dummy)
+#print(summary(model))
+
+# Coefficient for windspeed
+windspeed_coef <- coef(model)["windspeed"]
+print(windspeed_coef)
+
+# plotting coefficients
+coef_plot <- data.frame(Variable = names(coef(model)), Coefficient = coef(model))
+ggplot(coef_plot, aes(x = reorder(Variable, -abs(Coefficient)), y = Coefficient)) +
+  geom_bar(stat = "identity", fill = "blue", width = 0.7) +
+  coord_flip() +
+  labs(x = "Variable", y = "Coefficient", title = "Coefficients of Linear Regression Model") +
+  theme_minimal()
+```
+
+(c) Do the following steps
+
+-Run least squares linear regression with response being count and predictor being all remaining variables except windspeed. Calculate the residuals and call that variable count_residuals.
+
+```{r}
+# Load  the dataset
+bike_data <- getOMLDataSet(data.id = 42713)
+bike_data$data <- bike_data$data[, -c(7, 13, 14)] # Remove 'casual' and 'registered' as the sum of the two is 'count'. Also remove 'workingday' due to collinearity.
+
+# Convert dates to factors 
+bike_data$data$year <- factor(bike_data$data$year)
+bike_data$data$month <- factor(bike_data$data$month)
+bike_data$data$hour <- factor(bike_data$data$hour)
+bike_data$data$weekday <- factor(bike_data$data$weekday)
+
+# Run linear regression with response 'count' and predictors being all remaining variables except 'windspeed'
+model <- lm(count ~ . - windspeed, data = bike_data$data)
+
+# Calculate the residuals
+bike_data$data$count_residuals <- residuals(model)
+
+count_residuals = bike_data$data$count_residuals
+count_residuals
+```
+
+
+-Run least squares linear regression with response being windspeed and predictor being all remaining variables except count. Calculate the residuals and call that variable windpseed_residuals.
+
+```{r}
+bike_data = getOMLDataSet(data.id = 42713)
+bike_data$data <- bike_data$data[,-c(7,13,14)]  ## remove casual and registered as sum of the two is count. also remove working day due to collinearity.
+
+# Convert dates to factors
+bike_data$data$year <- factor(bike_data$data$year)
+bike_data$data$month <- factor(bike_data$data$month)
+bike_data$data$hour <- factor(bike_data$data$hour)
+bike_data$data$weekday <- factor(bike_data$data$weekday)
+
+# Define the formula for the linear regression model
+windspeed_formula <- as.formula(windspeed ~ . - count)
+
+# Run the linear regression model
+windspeed_model <- lm(windspeed_formula, data = bike_data$data)
+
+# Calculate the residuals
+bike_data$data$windspeed_residuals <- bike_data$data$windspeed - predict(windspeed_model)
+
+windspeed_residuals = bike_data$data$windspeed_residuals
+windspeed_residuals
+```
+
+
+-Run simple least squares linear regression with response being count_residuals and predictor windpseed_residuals and report the regression coefficient you get.
+
+
+```{r}
+#Define the linear regression model
+model1 <- lm(count_residuals ~ windspeed_residuals, data = bike_data$data)
+
+# Print coefficients
+print(model1$coefficients)
+```
+
+
+d.) Verify that the coefficients in Steps (b) and (c) are the same.
+
+ Indeed the coefficient in b) is -0.4353277 which is equal to the coefficient in c) which is -4.353277e-01
+
+
+
+
+
+
+
+e.) Replace the simple linear regression model in the second last step in part (c) by an auto-tuned k-nearest neighbors. Visualize the fit (by plotting windpseed_residuals against observed and predicted count_residuals) and compare it to the previous simple linear regression fit. Discuss the result.
+
+```{r}
+# Define the learner for k-nearest neighbors
+knn_lrn <- lrn("regr.kknn")
+
+# Define the search space for the hyperparameters
+knn_param_set <- ParamSet$new(list(
+  ParamInt$new("k", lower = 1, upper = 20),
+  ParamDbl$new("distance", lower = 0.1, upper = 2)
+))
+
+# Define the auto-tuner using 5-fold cross-validation
+knn_at <- AutoTuner$new(
+  learner = knn_lrn,
+  resampling = rsmp("cv", folds = 5),
+  measure = msr("regr.rmse"),
+  search_space = knn_param_set,
+  terminator = trm("evals", n_evals = 20),
+  tuner = tnr("random_search")
+)
+
+# Convert the data frame to a task object
+bike_task <- TaskRegr$new(id = "bike_data", backend = bike_data$data, target = "count_residuals")
+
+# Train the auto-tuned k-nearest neighbor model
+lm_model_knn <- knn_at$train(bike_task)
+
+# Generate predictions on the training set
+lm_model_knn_preds <- predict(lm_model_knn, newdata = bike_data$data)
+
+# Calculate residuals
+bike_data$data$count_residuals_knn <- bike_data$data$count_residuals - lm_model_knn_preds
+
+count_residuals_knn = bike_data$data$count_residuals_knn
+
+# Plot residuals
+par(mfrow = c(1, 2))
+plot(windspeed_residuals, bike_data$data$count_residuals, main = "Linear Regression", xlab = "Observed Residuals", ylab = "Predicted Residuals", ylim = c(-50, 50))
+abline(lm(count_residuals_knn ~ windspeed_residuals), col = "red")
+plot(windspeed_residuals, bike_data$data$count_residuals_knn, main = "Auto-Tuned k-Nearest Neighbors", xlab = "Observed Residuals", ylab = "Predicted Residuals", ylim = c(-50, 50))
+abline(lm(count_residuals_knn ~ windspeed_residuals), col = "red")
+
+# Generate predictions on the training set
+lm_model_knn_preds <- predict(lm_model_knn, newdata = bike_data$data)
+
+# Calculate residuals
+bike_data$data$count_residuals_knn <- bike_data$data$count_residuals - lm_model_knn_preds
+
+# Plot residuals
+par(mfrow = c(1, 2))
+plot(windspeed_residuals, count_residuals, main = "Linear Regression", xlab = "Windspeed Residuals", ylab = "Observed Residuals", ylim = c(-50, 50))
+abline(lm(count_residuals_knn ~ windspeed_residuals), col = "red")
+
+
+plot(windspeed_residuals, bike_data$data$count_residuals_knn, main = "Auto-Tuned k-Nearest Neighbors", xlab = "Windspeed Residuals", ylab = "Predicted Residuals", ylim = c(-50, 50))
+abline(lm(count_residuals_knn ~ windspeed_residuals), col = "red")
+
+# Calculate residuals
+bike_data$data$count_residuals_knn <- bike_data$data$count_residuals - lm_model_knn_preds
+
+```
+
+
+PART 3 (Tree based models)
+
+(a) Use the learner classif.rpart with predict_type = "prob" and train it on the task. Visualize the learned tree via
+
+```{r}
+
+# Load credit-g data and define task
+credit_data = getOMLDataSet(data.id = 31)
+task = as_task_classif(credit_data$data, target = "class")
+ 
+#Define our function                      
+my_lr_learner = lrn("classif.rpart", predict_type = "prob")
+graph_learner_lr = as_learner(
+  po("encode", method = "treatment",
+     affect_columns = selector_type("factor"), id = "binary_enc") %>>% po("scale") %>>% my_lr_learner
+)
+
+full_tree = graph_learner_lr$train(task)
+
+# load credit-g data and define task
+full_tree_trained <- full_tree$model$classif.rpart$model
+plot(full_tree_trained , compress = TRUE, margin = 0.1)
+text(full_tree_trained , use.n = TRUE, cex = 0.8)
+
+
+
+
+
+```
+
+(b) We now aim to find a penalty parameter \(\alpha\) that results in a pruned tree with strong predictive power. To this end, we define a tree learner that runs the weakest link algorithm and thereafter 5-fold cross validation to compare the performance between different trees.
+You can run the following command on the rpart object in order to see the CV result. Hint: If unsure how to extract the rpart object from your trained graph, check how this was done in part (a) above.
+
+```{r}
+# Create the task with the desired parameters
+task <- makeClassifTask(data = credit_data$data, target = "class")
+
+# Create the tree learner with 5-fold cross-validation
+my_cart_learner_cv <- makeLearner("classif.rpart", predict.type = "prob")
+
+# Cross-validation parameter setting
+my_cart_learner_cv <- setHyperPars(my_cart_learner_cv, par.vals = list(xval = 5))
+
+# Training the model
+cart_trained_cv <- train(my_cart_learner_cv, task)
+
+# Extract the rpart object from the trained model
+rpart_object <- getLearnerModel(cart_trained_cv)
+
+# Plot the complexity parameter (CP) table
+plotcp(rpart_object)
+printcp(rpart_object)
+
+
+
+
+```
+
+
+
+
+
+
+
+(c) 
+
+Pick an \(\alpha\) that is big enough and also has a low error. In the rpart package vignette, the following advice is given:
+
+    A plot of \(\alpha\) versus risk often has an initial sharp drop followed by a relatively flat plateau and then a slow rise. The choice of \(\alpha\) among those models on the plateau can be essentially random. To avoid this, both an estimate of the risk and its standard error are computed during the cross-validation. Any risk within one standard error of the achieved minimum is marked as being equivalent to the minimum (i.e.considered to be part of the flat plateau). Then the simplest model, among all those "tied" on the plateau, is chosen.
+
+Train and then visualize the tree with the chosen \(\alpha\). (The relevant parameter is called cp).
+
+
+
+```{r}
+# Load credit-g data
+credit_data <- getOMLDataSet(data.id = 31)
+
+# Features and target variables
+features <- as.data.frame(credit_data$data)[, -ncol(credit_data$data)]
+target <- as.data.frame(credit_data$data)[, ncol(credit_data$data)]
+
+# Training the decision tree model with rpart
+rpart_model <- rpart(target ~ ., data = features, method = "class", parms = list(split = "information"))
+
+# Plot the alpha versus error
+plotcp(rpart_model)
+
+# Extract the complexity parameter (alpha) table
+alpha_table <- rpart_model$cptable
+
+# Find the minimum error and its standard error
+min_error <- min(alpha_table[, "xerror"])
+min_error_std <- alpha_table[which.min(alpha_table[, "xerror"]), "xstd"]
+
+# Identify the alphas within one standard error of the minimum error
+alpha_candidates <- alpha_table[alpha_table[, "xerror"] <= min_error + min_error_std, "CP"]
+
+# Choose the simplest model among the tied models
+chosen_alpha <- min(alpha_candidates)
+
+# Prune the tree with the chosen alpha
+pruned_tree <- prune(rpart_model, cp = chosen_alpha)
+
+# Visualize the pruned tree
+rpart.plot(pruned_tree, extra = 2)
+
+
+```
+(d) 
+
+```{r}
+full_tree <- po("encode", method = "treatment", affect_columns = selector_type("factor")) %>>%
+  po("scale") %>>%
+  po("learner", lrn("classif.rpart", xval = 5, predict_type = "prob"))
+full_tree <- GraphLearner$new(full_tree)
+
+
+pruned_tree <- po("encode", method = "treatment", affect_columns = selector_type("factor")) %>>%
+  po("scale") %>>%
+  po("learner", lrn("classif.rpart", predict_type = "prob", cp = chosen_alpha))
+pruned_tree <- GraphLearner$new(pruned_tree)
+
+random_forest <- po("encode") %>>%
+  po("scale") %>>%
+  lrn("classif.ranger", importance = "impurity",
+      mtry.ratio = to_tune(0.1, 1),
+      min.node.size = to_tune(1, 50)) %>%
+  as_learner() %>>%
+  auto_tuner(
+    tuner = tnr("random_search", batch_size = 20),
+    learner = .,
+    resampling = rsmp("holdout"),
+    measure = msr("classif.ce"),  
+    terminator = trm("evals", n_evals = 10)
+  )
+
+xgboost <- po("encode") %>>%
+  po("scale") %>>%
+  lrn("classif.xgboost",
+      eta = to_tune(0, 0.5),
+      nrounds = to_tune(10, 5000),
+      max_depth = to_tune(1, 10)) %>>%
+  as_learner() %>>%
+  AutoTuner$new(
+    tuner = tnr("random_search", batch_size = 20),
+    learner = .,
+    resampling = rsmp("holdout"),
+    measure = msr("classif.ce"),  
+    terminator = trm("evals", n_evals = 10)
+  )
+
+benchmark_design <- benchmark_grid(
+  tasks = list(task),
+  learners = list(
+    forest = random_forest,
+    pruned_tree = pruned_tree,
+    full_tree = full_tree,
+    xgboost = xgboost,
+    featureless = lrn("classif.featureless")
+  ),
+  resamplings = list(rsmp("cv", folds = 5))
+)
+
+benchmark_results <- benchmark(design = benchmark_design)
+
+autoplot(benchmark_results, measure=msr("classif.acc"))
+
+benchmark_results$aggregate(list(
+  msr("classif.ce"),
+  msr("classif.acc"),
+  msr("classif.auc"),
+  msr("classif.fpr"),
+  msr("classif.fnr")))
+```
+
+
+(e)
+
+```{r}
+cost_matrix <- matrix(
+  c(0, 5, 1, 0), 
+  nrow = 2,
+  dimnames = list(
+    "Predicted Credit" = c("good", "bad"),
+    "Truth" = c("good", "bad")
+  )
+)
+custom_measure <- msr("classif.costs", costs = cost_matrix)
+benchmark_results_custom <- benchmark_results$aggregate(measures = custom_measure)
+print(benchmark_results_custom)
+```
+
+(f)
+
+```{r}
+cost_data <- data.frame(
+  Learners = c("Random Forest", "Pruned Tree", "Unpruned Tree", "XGBoost", "Featureless"),
+  Cost_CE = c(0.501, 0.647, 0.675, 0.656, 0.300)
+)
+
+ggplot(cost_data, aes(x = Learners, y = Cost_CE, fill = Learners)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Learners", y = "Cost (CE)", title = "Bar Chart of Learner ID vs. Classification Cost") +
+  theme(axis.text.x = element_text(angle = 360, hjust = 1))
+
+```
+
+
+
+
+
+
+
+

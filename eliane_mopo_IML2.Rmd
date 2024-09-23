@@ -1,0 +1,560 @@
+---
+title: "SECOND ASSIGNMENT OF INTERPRETABLE MACHINE LEARNING"
+output: pdf_document
+date: "30-03-2024"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+PART 1 (Comparison of five encoding strategies on the credit-g data set)
+```{r}
+rm(list = ls())
+library(mlr3)
+library(mlr3learners)
+library(mlr3tuning)
+library(OpenML)
+library(mlr3pipelines)
+library(future)
+library(tictoc)
+library(ranger)
+future::plan("multisession")
+```
+
+
+
+```{r}
+set.seed(2024)
+
+# load credit-g data and define task
+credit_data = getOMLDataSet(data.id = 31)
+task = as_task_classif(credit_data$data, target = 'class')
+
+
+
+# Define the Random Forest learner with tunable hyperparameters
+learn = lrn("classif.ranger",
+                 mtry.ratio = to_tune(0.1, 1),
+                 min.node.size = to_tune(1, 50),
+                 predict_type = "prob")
+
+learner = lrn("classif.ranger")
+
+
+splits =  partition(task, ratio = 0.8)
+
+# Training
+learner$train(task, row_ids = splits$train)
+
+# Prediction
+prediction = learner$predict(task, row_ids = splits$test)
+prediction
+```
+
+
+Definition of the five graphs
+
+
+```{r}
+# Graph with dummy encoding and the Random Forest learner
+Graph1 = po("encode") %>>% learn
+
+
+# Graph with target using  po("encodeimpact") encoding and the Random Forest learner
+Graph2 = po("encodeimpact")  %>>% learn
+
+
+# Graph with Random Forest learner where target encoding is done within the ranger package (respect.unordered.factors = "order")
+Graph3 = lrn("classif.ranger",mtry.ratio = to_tune(0.1, 1),min.node.size = to_tune(1, 50),predict_type = "prob", respect.unordered.factors = "order")
+
+
+#Graph with Random Forest learner where target encoding is done within the ranger package and before every split (respect.unordered.factors = "partition")
+Graph4 = lrn("classif.ranger",mtry.ratio = to_tune(0.1, 1),min.node.size = to_tune(1, 50),predict_type = "prob", respect.unordered.factors = "partition")
+
+
+# Graph with glmm encoding %>>% Random Forest learner (use po("encodelmer"))
+Graph5  = po("encodelmer") %>>% learn
+```
+
+First graph
+
+```{r}
+
+# Convert the graph to a GraphLearner
+Graph = as_learner(Graph1)
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+
+# Set up the AutoTuner
+
+tic()
+auto_tuner = AutoTuner$new(
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err1 = print(res_results['classif.ce'])
+err1
+```
+
+Second graph
+
+```{r}
+
+# Convert the graph to a GraphLearner
+Graph = as_learner(Graph2)
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err2 = print(res_results)
+err2
+```
+
+Third graph
+
+```{r}
+
+# Convert the graph to a GraphLearner
+Graph = as_learner(Graph3)
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err3 = print(res_results)
+err3
+```
+
+Fourth graph
+
+```{r}
+
+# Convert the graph to a GraphLearner
+Graph = as_learner(Graph4)
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  # task = task,
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err4 = print(res_results)
+err4
+```
+
+Fifth graph
+
+```{r}
+
+# Convert the graph to a GraphLearner
+Graph = as_learner(Graph5)
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  # task = task,
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err5 = print(res_results)
+err5
+```
+
+
+
+
+Comparison of the results
+
+
+- 159.983 sec elapsed
+  classif.ce 
+  0.2459885 
+ 
+- 107.186 sec elapsed
+  classif.ce 
+  0.2520155 
+ 
+- 61.207 sec elapsed
+  classif.ce 
+  0.2439955 
+ 
+- 1136.508 sec elapsed
+  classif.ce 
+  0.2370065 
+ 
+- 324.147 sec elapsed
+  classif.ce 
+  0.2500105 
+
+Regarding our results, the best graph in terms of time elapsed is the third one with 61.207 sec and regarding the classification error, the best graph is the fourth graph 0.2370065. If we had to choose only one graph, it will be the third one according to what we got in general.
+
+
+
+
+
+PART 2 (Come up with your own encoding strategy)
+
+Let us come up with our own encoding strategy and let us compare the performance of our strategy to the previous five.
+
+Here we define a new encodage, pipeline_factor as follows:
+
+```{r}
+pipeline_factor =
+    po("removeconstants") %>>%
+    po("collapsefactors", no_collapse_above_prevalence = 0.01) %>>%
+    po("encodeimpact",
+        affect_columns = selector_cardinality_greater_than(10),
+        id = "high_card_enc")
+
+```
+
+
+Define the five graphs using the above function
+
+```{r}
+# Graph with dummy encoding and the Random Forest learner
+Graph1b = pipeline_factor %>>% learn
+
+
+# Graph with target using  po("encodeimpact") encoding and the Random Forest learner
+Graph2b = pipeline_factor %>>% po("encodeimpact")  %>>% learn
+
+
+# Graph with Random Forest learner where target encoding is done within the ranger package (respect.unordered.factors = "order")
+Graph3b = pipeline_factor %>>% lrn("classif.ranger",mtry.ratio = to_tune(0.1, 1),min.node.size = to_tune(1, 50),predict_type = "prob", respect.unordered.factors = "order")
+
+
+#Graph with Random Forest learner where target encoding is done within the ranger package and before every split (respect.unordered.factors = "partition")
+Graph4b = pipeline_factor %>>% lrn("classif.ranger",mtry.ratio = to_tune(0.1, 1),min.node.size = to_tune(1, 50),predict_type = "prob", respect.unordered.factors = "partition")
+
+
+# Graph with glmm encoding %>>% Random Forest learner (use po("encodelmer"))
+Graph5b  = pipeline_factor %>>% po("encodelmer") %>>% learn
+
+```
+
+Firt graph
+
+```{r}
+Graph = as_learner(Graph1b)
+
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph ,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err1b = print(res_results['classif.ce'])
+err1b
+```
+
+Second graph
+
+```{r}
+Graph = as_learner(Graph2b)
+
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph ,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err2b = print(res_results['classif.ce'])
+err2b
+```
+
+Third graph
+
+```{r}
+Graph = as_learner(Graph3b)
+
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err3b = print(res_results['classif.ce'])
+err3b
+
+```
+
+Fourth graph
+
+```{r}
+Graph = as_learner(Graph4b)
+
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err4b = print(res_results['classif.ce'])
+err4b
+```
+
+Fifth graph
+
+```{r}
+Graph = as_learner(Graph5b)
+
+
+# Setup the resampling methods for inner and outer cross-validation
+inner_resampling = rsmp("cv", folds = 5)
+outer_resampling = rsmp("cv", folds = 3)
+
+
+# Set up the AutoTuner
+tic()
+auto_tuner = AutoTuner$new(
+  # task = task,
+  tuner = tnr("random_search", batch_size = 50),
+  learner = Graph ,
+  resampling = inner_resampling,
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50),
+ 
+)
+
+
+# Computational time measurement
+system.time({
+  # Perform nested cross-validation
+  res = resample(task = task, learner = auto_tuner, resampling = outer_resampling, store_models = TRUE)
+})
+toc()
+
+
+# Aggregate and print the results
+res_results = res$aggregate(measures = msr("classif.ce"))
+err5b = print(res_results['classif.ce'])
+err5b
+```
+
+
+
+
+- 121.473 sec elapsed
+  classif.ce 
+  0.2350075 
+ 
+ 
+- 153.034 sec elapsed
+  classif.ce 
+  0.2350105 
+
+- 116.163 sec elapsed
+  classif.ce 
+  0.2410165 
+ 
+ 
+- 1572.714 sec elapsed
+  classif.ce 
+  0.2429795 
+ 
+- 573.352 sec elapsed
+  classif.ce 
+  0.2479995 
+
+Regarding our results, the best graph in terms of time elapsed is the fourth one with 116.163 sec and regarding the classification error, the best graph is the first graph 0.2350075. If we had to choose only one graph, it will be the first one according to what we got in general.
+
+
+Good work.

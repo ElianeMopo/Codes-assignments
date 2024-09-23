@@ -1,0 +1,242 @@
+---
+title: "Ass1"
+output: pdf_document
+date: "2024-03-21"
+---
+
+```{r}
+#Loading packages
+library(mlr3)
+library(mlr3learners )
+library(mlr3tuning)
+library(mlr3mbo)
+library(glmnet)
+library(OpenML)
+library(mlr3pipelines)
+library(farff)
+library(caret)
+library(mlr3oml)
+library(poLCA)
+library(mlr3hyperband)
+library(parsnip)
+library(recipes)
+library(paradox)
+library(DiceKriging)
+library(rgenoud)
+
+
+
+### If parallelizationis wanted also: 
+library(future)
+future::plan("multisession")
+```
+
+(a) (Default fitting)
+
+
+
+```{r}
+#Let us fetch the data and create a task.
+credit_data = getOMLDataSet(data.id = 31)
+task = as_task_classif(credit_data$data, target = "class") 
+credit_data$data
+task$data()
+```
+
+
+
+```{r}
+#Setting the reproducibility
+set.seed(123) 
+
+#Splitting the data set into training and testing sets
+Splits = sample(1:nrow(task$data()), 0.88 * nrow(task$data()))
+train_set = task$data()[Splits, ]
+test_set = task$data()[-Splits, ]
+  
+# Dimensions of those sets
+dim(train_set)
+dim(test_set)
+```
+
+
+
+```{r}
+#Define the graph with po("encode") 
+po_encode = po("encode")
+train_set_encoded = po_encode$train(list(task))[[1]]$data()
+```
+
+
+```{r}
+#Define the graph with po("scale")
+po_scale = po("scale")
+train_set_scaled = po_scale$train(list(task))[[1]]$data()
+graph1 = po_encode %>>% po_scale
+graph1
+graph1$plot(horizontal = TRUE)
+```
+```{r}
+#Logistic Regression with default settings
+model = glm(class ~ ., data = train_set_scaled, family = binomial)
+```
+
+
+```{r}
+
+# Preprocessing steps
+po_encode <- po("encode")
+po_scale <- po("scale")
+
+# Define the task and learner
+learner <- lrn("classif.log_reg", predict_type = "prob")
+
+# Train the learner on the task
+learner$train(task)
+
+# Predict on the test set
+prediction2 <- learner$predict_newdata(test_set)
+prediction2
+ 
+# Extract true labels from the test set
+true_labels <- test_set$class
+print(true_labels)
+print(prediction2)
+
+# Thresholding predictions to get binary predictions
+threshold <- 0.5 
+binary_predictions <- ifelse(prediction2$prob[,1]>= threshold, "good", "bad")
+
+print(prediction2$response)
+print(binary_predictions)
+
+# Accuracy
+accuracy <- mean(binary_predictions == true_labels)
+cat("Accuracy:", accuracy, "\n")
+
+
+# Confusion matrix
+confusion_matrix <- table(True = true_labels, Predicted = binary_predictions)
+print(confusion_matrix)
+plot(confusion_matrix,color='red')
+print(paste("Accuracy:", accuracy))
+```
+
+
+(b) (Cross Validation)
+
+
+```{r}
+#Preprocessing steps
+preprocessing <- po("encode") %>>% po("scale")
+
+# Define the learner with tunable parameters
+learner <- lrn("classif.glmnet", s = to_tune(0, 1), alpha = to_tune(0, 1))
+
+# Create a pipeline graph
+graph2 <- preprocessing %>>% learner
+
+# Print the pipeline graph
+graph2
+graph$plot(horizontal = TRUE)
+```
+
+
+```{r}
+# Create a pipeline graph
+graph <- preprocessing %>>% learner
+
+# Define the tuning instance
+instance = mlr3tuning::tune(
+  method = tnr("random_search", batch_size = 2),
+  task = task,
+  learner = graph2,
+  resampling = rsmp("cv", folds = 5),
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50)
+)
+
+print(instance)
+
+
+
+# Hyperparameter tuning
+best_configuration  = graph2$param_set$values = instance$result_learner_param_vals
+best_configuration_error = graph2$param_set$values$classif.glmnet.lambda = graph2$param_set$values$classif.glmnet.s
+
+graph2$model
+
+######## À completer 
+beta_value = graph2$model$classif.cv_glmnet$model$beta
+
+# Get the best configuration
+best_configuration <- instance$result
+best_configuration_error <- instance$y
+
+print(instance$y)
+
+# Print the best configuration and its error
+print(best_configuration)
+print(best_configuration_error)
+print(beta_value)
+```
+
+
+
+```{r}
+library(ranger)
+# Define the tuning instance
+instance2 = mlr3tuning::tune(
+  tuner = tnr("mbo"),
+  task = task,
+  learner = graph2,
+  resampling = rsmp("cv", folds = 5),
+  measure = msr("classif.ce"),
+  terminator = trm("evals", n_evals = 50)
+)
+
+```
+
+```{r}
+
+#print(instance2$y)
+
+# Perform hyperparameter tuning
+
+library(mlr3mbo)
+
+```
+
+
+(c) (Nested Cross Validation)
+
+
+```{r}
+
+library(mlr3)
+library(mlr3tuning)
+
+# Define the outer resampling strategy (nested cross-validation)
+outer_rsmp <- rsmp("cv", folds = 5)
+
+
+
+# Define the graph (auto_tuner)
+instance3 <- AutoTuner$new(
+  learner = graph2,
+  resampling =  rsmp("cv", folds = 5),
+  measure = msr("classif.ce"),
+  tuner = tnr("random_search"),
+  terminator = trm("evals", n_evals = 50)
+)
+
+
+
+```
+
+
+
+
+
+
+
