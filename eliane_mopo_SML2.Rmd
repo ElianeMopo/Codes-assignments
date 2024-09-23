@@ -1,0 +1,226 @@
+---
+title: "SECOND ASSIGNMENT OF SML"
+author: "Eliane Mopo"
+date: '2024-01-21'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(kernlab)
+library(ROCR)
+library(MASS)
+library(lattice)
+library(caret)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(class)
+library(audio)
+library(xtable)
+```
+
+
+
+
+# 1. Comment on the peculiarities of the dataset from a point of view dimensionality.
+```{r}
+getwd()
+XY <- read.csv('accent-raw-data-1.csv')
+X <- as.matrix(XY[,-1])
+Y <- XY[,1]
+
+p <- ncol(XY)-1 # Dimensionality of the input space
+p
+n <- nrow(XY) # Sample size
+n
+```
+# 2. Let us the ts.plot() function to plot speakers {9, 45, 81, 99, 126, 234}.
+
+```{r}
+par(mfrow = c(2,3))
+speakers <- c(9,45,81,99,126,234)
+for(i in speakers)
+{
+  ts.plot(as.numeric(X[i,]), main=paste('speaker',i) , ylab= 'soundtracks' , xlab='Time')
+}
+par(mfrow = c(1,1))
+```
+
+# 3. Comment comparatively on the features of the plotted soundtracks.
+```{r}
+for(i in speakers)
+{
+  play(as.numeric(X[i,]))
+  Sys.sleep(3)
+}
+```
+
+# 2. 
+
+```{r}
+accent_mfcc <- read.csv('accent-mfcc-data-1.csv')
+
+
+accent_mfcc$y <- as.factor(ifelse(accent_mfcc$language=="US",1,0))
+xy <- accent_mfcc[,-1]
+p <- ncol(xy) # Dimensionality of the input space
+x <- xy[,-p]
+y<- xy[,p]
+
+```
+
+# 1. Generate separate confusion matrices for each of the three methods
+```{r}
+n <- nrow(x)
+vk <- seq(1, floor(sqrt(n))) # Grid of values of k
+nk <- length(vk)             # Number of values of k considered
+cv.error <- numeric(nk)     # Vector of cross validation errors for each k
+nc <- n                     # Number of observations used for cross validation
+c <- 10                   # Number of folds. We are doing c-fold cross validation
+S <- sample(sample(nc))     # We randomly shuffle the data before starting CV
+m <- ceiling(nc/c)          # Maximum Number of observations in each fold
+held.out.set <- matrix(0, nrow=c, ncol=m) # Table used to track the evolution
+for(ic in 1:(c-1))
+{
+  held.out.set[ic,] <- S[((ic-1)*m + 1):(ic*m)]
+}
+
+held.out.set[c, 1:(nc-(c-1)*m)] <- S[((c-1)*m + 1):nc]  # Handling last chunk just in case n!=mc
+for(j in 1:nk)
+{
+  for(i in 1:c)
+  {  
+    out <-  held.out.set[i,]
+    yhatc<- knn(x[-out,], x[out,],y[-out],  k=vk[j])
+    cv.error[j]<-cv.error[j] + (length(out)-sum(diag(table(y[out],yhatc))))/length(out)
+  }
+  cv.error[j]<-cv.error[j]/c
+}
+k <-which.min(cv.error)
+
+```
+
+```{r}
+#1NN
+kNN.mod <- knn(x, x, y, k=1, prob = TRUE)
+conf.mat.kNN <- table(y,kNN.mod)
+conf.mat.kNN
+```
+
+
+```{r}
+#kNN
+kNN.mod <- knn(x, x, y, k=k, prob = TRUE)
+conf.mat.kNN <- table(y,kNN.mod)
+conf.mat.kNN
+```
+
+```{r}
+# Trees
+tree.mod <- rpart(y ~ ., data =xy, method = "class")
+y.pred <- predict(tree.mod, x, type = "class")
+conf.mat.tree <- table(y,y.pred )
+conf.mat.tree
+
+```
+
+
+```{r}
+# SVM
+y.svm <- ksvm(y ~., data = xy, kernel = 'rbfdot', type='C-svc', prob.model=TRUE)
+y.pred <- predict(y.svm, x)
+conf.mat.svm <- table(y,y.pred )
+conf.mat.svm
+```
+
+# 2. Plot comparative ROC curves for all the three methods
+
+```{r}
+# kNN
+
+prob <- attr(kNN.mod, 'prob')
+prob <- 2*ifelse(kNN.mod == "0", 1-prob, prob) - 1
+pred.kNN <- prediction(prob, y)
+perf.kNN <- performance(pred.kNN, measure='tpr', x.measure='fpr')
+#Trees
+prob <- predict(tree.mod, x, type='prob')[,2]
+pred.tree <- prediction(prob, y)
+perf.tree <- performance(pred.tree, measure='tpr', x.measure='fpr')
+# SVM
+
+prob     <- predict(y.svm, x, type='probabilities')[,2]
+pred.svm <- prediction(prob, y)
+perf.svm <- performance(pred.svm, measure='tpr', x.measure='fpr')
+
+# plots of the ROC Curves
+plot(perf.kNN, col=1, lwd= 2, lty=1, main=paste('Comparative ROC curves'))
+plot(perf.kNN, col=2, lwd= 2, lty=1, add=TRUE)
+plot(perf.tree, col=3, lwd= 2, lty=1, add=TRUE)
+plot(perf.svm, col=4, lwd= 2, lty=1, add=TRUE)
+abline(a=0,b=1)
+legend('bottomright', inset=0.05, c('kNN', 'Tree', 'SVM'),col=4:10, lty=1)
+
+#The ROC curve of 1NN will be perfect if you plot it, but here, I decided to plot the ROC of 3NN
+```
+# 3. Use a 60% − 40% Training-Test set split to generate comparative boxplots of the
+#test error based on 100 replications.
+```{r}
+epsilon <- 0.6            # Proportion of Training set
+R <-100                    # Numbers of replications
+te.err <- matrix(0,nrow = R, ncol=3)
+
+```
+
+```{r}
+for(r in 1:R)
+{
+  # Split the data
+  
+  hold <- stratified.holdout(y, epsilon)
+  id.tr <- hold$idx1
+  id.te <- hold$idx2
+  ntr   <- length(id.tr)
+  nte   <- length(id.te)
+  
+  
+  # kNN
+  yte.hat.kNN <- knn(x[id.tr,], x[id.te,],y[id.tr], k=k, prob=TRUE)
+  ind.err.te <- ifelse(y[id.te]!=yte.hat.kNN,1,0)
+  te.err[r,1] <- mean(ind.err.te)
+  
+  # Tree
+  tree.mod <- rpart(y ~ ., data = xy[id.tr,], method = "class")
+  yte.hat.tree <- predict(tree.mod, x[id.te, ], type='class')
+  ind.err.te<- ifelse(y[id.te]!=yte.hat.tree,1,0)  # Random variable tracking error. Indicator
+  te.err[r,2]  <- mean(ind.err.te)
+  
+  # SVM
+  svm.mod <- ksvm(y~., data=xy[id.tr, ], kernel='rbfdot', type='C-svc', prob.model=TRUE)
+  y.te.hat <- predict(svm.mod, x[id.te, ], type='response')
+  ind.err.te     <- ifelse(y[id.te]!=y.te.hat ,1,0)
+  te.err[r,3]  <- mean(ind.err.te)
+}
+```
+
+```{r}
+test.error <- data.frame(te.err)
+colnames(test.error) <- c('KNN', 'Tree', 'SVM')
+boxplot(test.error , col=2:4 , main= 'Comparative boxplots of the
+test error based on 100 replications')
+```
+
+
+```{r}
+#  4. Comment on the predictive performances.
+xtable(summary(test.error))
+var(test.error$kNN)
+var(test.error$Tree)
+var(test.error$SVM)
+```
+
+# 5. Reconsider the confusion matrix of the best method and comment on the similarity
+#between speaking accents.

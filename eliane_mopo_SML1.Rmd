@@ -1,0 +1,767 @@
+---
+title: "Statiscal Machine Learning Assignment 1"
+author: "Eliane Mopo"
+date: '2024-01-13'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dslabs)
+library(MASS)
+library(caret)
+library(rpart)
+library(PreProcessing)
+library(ROCR)
+library(dplyr)
+library(xtable)
+```
+
+#Exersice1
+
+```{r}
+set.seed(19671210)
+
+# Function to split dataset
+
+mnist <- read_mnist() # Read in the MNIST data
+
+str(mnist)
+#  extraction data
+xtrain <- mnist$train$images[mnist$train$labels %in% c(1,7),]
+ytrain <- mnist$train$labels[mnist$train$labels %in% c(1,7)]
+ytrain <- factor(ytrain, levels = c(1,7), labels = c("1","0"))
+table(ytrain)/length(ytrain)*100
+
+xtest <- mnist$test$images[mnist$test$labels %in% c(1,7),]
+ytest <- mnist$test$labels[mnist$test$labels %in% c(1,7)]
+ytest <- factor(ytest, levels = c(1,7), labels = c("1","0"))
+table(ytest)/length(ytest)*100
+
+# 1. Choose n a training set size and m a test set size, and write a piece of code for sampling a
+
+# fragment from the large dataset. Explain why you choose the numbers you chose.
+
+ stratified.holdout <- function(y, ptr)
+   {
+     n              <- length(y)
+     labels         <- unique(y)       # Obtain classifiers
+     id.tr          <- id.te <- NULL
+     # Loop once for each unique label value
+  
+     y <- sample(sample(sample(y)))
+  
+     for(j in 1:length(labels)) 
+     {
+        sj    <- which(y==labels[j])  # Grab all rows of label type j  
+        nj    <- length(sj)           # Count of label j rows to calc proportion below
+        
+        id.tr <- c(id.tr, (sample(sample(sample(sj))))[1:round(nj*ptr)])
+      }                               # Concatenates each label type together 1 by 1
+  
+      id.te  <- (1:n) [-id.tr]          # Obtain and Shuffle test indices to randomize                                
+  
+      return(list(idx1=id.tr,idx2=id.te)) 
+ }  
+xtrain <- mnist$train$images
+   ytrain <- mnist$train$labels
+   ytrain <- as.factor(ytrain)
+   
+   
+   hold  <- stratified.holdout(ytrain, 0.05) 
+   id.tr <- hold$idx1
+   ntr   <- length(id.tr)
+   ntr
+   
+   p   <- ncol(xtrain)
+
+   xtest <- mnist$test$images
+   ytest <- mnist$test$labels
+   ytest <- as.factor(ytest)
+
+   hold  <- stratified.holdout(ytest, 0.05)
+   id.te <- hold$idx1
+   nte   <- length(id.te)
+   nte
+   
+  
+   xtr <- xtrain[id.tr,]
+   ytr <- ytrain[id.tr]
+   xte <- xtest[id.te,]
+   yte <- ytest[id.te]
+```
+
+# 2 Display both the training confusion matrix and the test confusion matrix for each of the
+
+# four learning machines under consideration.
+
+```{r}
+# For 1NN
+ytr_kNN1 <- knn(xtr, xtr, ytr, k=1, prob=TRUE)
+yte_kNN1 <- knn(xtr, xte, ytr, k=1, prob=TRUE)
+
+
+confM_tr_kNN1 <- table(ytr, ytr_kNN1)
+confM_tr_kNN1
+confM_te_kNN1 <- table(yte, yte_kNN1)
+confM_te_kNN1
+
+
+```
+
+```{r}
+# For 9NN
+ytr_kNN9 <- knn(xtr, xtr, ytr, k=9, prob=TRUE)
+yte_kNN9 <- knn(xtr, xte, ytr, k=9, prob=TRUE)
+
+confM_tr_kNN9 <- table(ytr, ytr_kNN9)
+confM_tr_kNN9
+confM_te_kNN9 <- table(yte, yte_kNN9)
+confM_te_kNN9
+
+```
+
+```{r}
+# For 18NN
+ytr_kNN18 <- knn(xtr, xtr, ytr, k=18, prob=TRUE)
+yte_kNN18 <- knn(xtr, xte, ytr, k=18, prob=TRUE)
+
+confM_tr_kNN18 <- table(ytr, ytr_kNN18)
+confM_tr_kNN18
+confM_te_kNN18 <- table(yte, yte_kNN18)
+confM_te_kNN18
+
+```
+
+```{r}
+# For 27NN
+ytr_kNN27 <- knn(xtr, xtr, ytr, k=27, prob=TRUE)
+yte_kNN27 <- knn(xtr, xte, ytr, k=27, prob=TRUE)
+
+confM_tr_kNN27 <- table(ytr, ytr_kNN27)
+confM_tr_kNN27
+confM_te_kNN27 <- table(yte, yte_kNN27)
+confM_te_kNN27
+
+```
+
+# 3. Display the comparative ROC curves of the four learning machines, and do so for both
+
+# the training set and the test set.
+
+# Training
+
+```{r}
+# For 1NN
+
+prob <- attr(ytr.knn1, 'prob')
+prob <- 2*ifelse(ytr.knn1 == "0", 1-prob, prob) - 1
+model_1nn= class:: knn(train=xtr,test=xte,cl=ytr,k=1,prob = TRUE)
+pred.1nn <- prediction(prob, ytr)
+perf_1nn <- performance(pred.1nn, measure='tpr', x.measure='fpr')
+```
+
+```{r}
+# For 9NN
+
+prob <- attr(ytr.knn9, 'prob')
+prob <- 2*ifelse(ytr.knn9 == "0", 1-prob, prob) - 1
+
+pred.9nn <- prediction(prob, ytr)
+perf.9nn <- performance(pred.9nn, measure='tpr', x.measure='fpr')
+
+```
+
+```{r}
+# For 18NN
+
+prob <- attr(ytr.knn18, 'prob')
+prob <- 2*ifelse(ytr.knn18 == "0", 1-prob, prob) - 1
+
+pred.18nn <- prediction(prob, ytr)
+perf.18nn <- performance(pred.18nn, measure='tpr', x.measure='fpr')
+
+```
+
+```{r}
+# For 27NN
+
+prob <- attr(ytr.knn27, 'prob')
+prob <- 2*ifelse(ytr.knn27 == "0", 1-prob, prob) - 1
+
+pred.27nn <- prediction(prob, ytr)
+perf.27nn <- performance(pred.27nn, measure='tpr', x.measure='fpr')
+
+```
+
+# Comparison graphics Training
+
+```{r}
+plot(perf_1nn, col=2, lwd= 2, lty=2, main=paste('comparative of Predictive ROC curves for Training'))
+plot(perf.9nn, col=3, lwd= 2, lty=3,add=TRUE)
+plot(perf.18nn, col=4, lwd= 2, lty=4, add=TRUE)
+plot(perf.27nn, col=4, lwd= 2, lty=4, add=TRUE)
+abline(a=0,b=1)
+legend('bottomright', inset=0.05, c('1NN','9NN', '18NN', '27NN'),  col=2:4, lty=2:4)
+
+```
+
+# Testing
+
+```{r}
+# For 1NN
+prob <- attr(yte.knn1, 'prob')
+prob <- 2*ifelse(yte.knn1 == "0", 1-prob, prob) - 1
+
+pred.1nn <- prediction(prob, yte)
+perf_1nn <- performance(pred.1nn, measure='tpr', x.measure='fpr')
+
+```
+
+```{r}
+# For 9NN
+
+prob <- attr(yte.knn9, 'prob')
+prob <- 2*ifelse(yte.knn9 == "0", 1-prob, prob) - 1
+
+pred.9nn <- prediction(prob, yte)
+perf.9nn <- performance(pred.9nn, measure='tpr', x.measure='fpr')
+
+```
+
+```{r}
+# For 18NN
+
+prob <- attr(yte.knn18, 'prob')
+prob <- 2*ifelse(yte.knn18 == "0", 1-prob, prob) - 1
+
+pred.18nn <- prediction(prob, yte)
+perf.18nn <- performance(pred.18nn, measure='tpr', x.measure='fpr')
+
+```
+
+```{r}
+# For 27NN
+
+prob <- attr(yte.knn27, 'prob')
+prob <- 2*ifelse(yte.knn27 == "0", 1-prob, prob) - 1
+
+pred.27nn <- prediction(prob, yte)
+perf.27nn <- performance(pred.27nn, measure='tpr', x.measure='fpr')
+
+```
+
+```{r}
+# Comparison graphics
+
+plot(perf_1nn, col=2, lwd= 2, lty=2, main=paste('comparative of Predictive ROC curves for test'))
+plot(perf.9nn, col=3, lwd= 2, lty=3, add=TRUE)
+plot(perf.18nn, col=4, lwd= 2, lty=4, add=TRUE)
+plot(perf.27nn, col=4, lwd= 2, lty=4, add=TRUE)
+abline(a=0,b=1)
+legend('bottomright', inset=0.05, c('1NN','9NN', '18NN', '27NN'),  col=2:4, lty=2:4)
+```
+
+# 4. Identify two false positives and two false negatives at the test phase, and in each case,
+
+# plot the true image against its falsely predicted counterpart.
+
+```{r}
+# For 1NN
+im <- which(yte!=yte_kNN1)[c(1,2)]
+par(mfrow=c(1,2))
+for(j in 1:2)
+{
+  i <- im[j]
+  image(1:28, 1:28, matrix(xte[i,], nrow=28)[ , 28:1], 
+        col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+}
+
+```
+
+```{r}
+# For 9NN
+im <- which(yte!=yte_kNN9)[c(1,2)]
+par(mfrow=c(1,2))
+for(j in 1:2)
+{
+  i <- im[j]
+  image(1:28, 1:28, matrix(xte[i,], nrow=28)[ , 28:1], 
+        col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+}
+
+```
+
+```{r}
+# For 18NN
+im <- which(yte!=yte_kNN18)[c(1,2)]
+par(mfrow=c(1,2))
+for(j in 1:2)
+{
+  i <- im[j]
+  image(1:28, 1:28, matrix(xte[i,], nrow=28)[ , 28:1], 
+        col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+}
+
+```
+
+```{r}
+# For 27NN
+im <- which(yte!=yte_kNN27)[c(1,2)]
+par(mfrow=c(1,2))
+for(j in 1:2)
+{
+  i <- im[j]
+  image(1:28, 1:28, matrix(xte[i,], nrow=28)[ , 28:1], 
+        col = gray(seq(0, 1, 0.05)), xlab = "", ylab="")
+}
+```
+
+# 5.Comment in greater details on any pattern that might have emerged.
+
+#Exercise 2
+
+#2. Let n = 99. Generate {(Xi,Yi), i = 1, · · · , n}, an iid sample of size n where each
+
+\#(Xi,Yi) as density p(x, y).
+
+```{r}
+generate = function(m){
+  X <- runif(n = m, min = 0, max = 2*pi)
+  Y <- rnorm(n = m, mean = pi/2*X + (3/4)*pi*cos((pi/2)*(X+1)))
+  df <- cbind(X, Y)
+  return(df)
+}
+
+
+n <- 99
+
+dataset <- generate(n)
+generate(n)
+```
+
+#Drawing of X
+
+```{r}
+plot(X)
+```
+
+#Drawing of Y
+
+```{r}
+Y <- rnorm(n = m, mean = pi/2*X + (3/4)*pi*cos((pi/2)*(X+1)))
+plot(Y)
+```
+
+#3.Draw the scatterplot from {(Xi,Yi), i = 1, · · · , n}.
+
+```{r}
+plot(dataset[, 1], dataset[, 2],col="red")
+```
+
+#4.3 Consider a 60% − 40% Training-Test Set split and from it plot the comparative #boxplots of the test errors based on 100 replications, for (a) kNN regression (b) #Linear regression (c) Polynomial Regression (d) Regression tree learner
+
+```{r}
+p_tr <- 0.6
+n_tr <- p_tr * n
+n_te <- n - n_tr
+
+Repl_number <- 100
+
+MSE <- matrix(0, nrow = Repl_number, ncol = 4)#4 modeles
+individu <- sample(sample(c(rep(TRUE, n_tr), rep(FALSE, n_te))))#TRUE ONLY WHEN CALL
+n = 99
+for(r in 1:Repl_number){
+  dataset = generate(n)
+  X <- dataset[, 1]
+  Y <- dataset[, 2]
+  x_train <- X[individu]
+  y_train <- Y[individu]
+
+  training <- data.frame(cbind(x_train,y_train))
+  colnames(training) <- c('x', 'y')
+
+  x_test <- X[!individu]
+  y_test <- Y[!individu]
+  
+  x <-  x_test
+  
+  #a) kNN Regression
+  
+  knn <- knnreg(y ~ x, data = training)
+  y_pred <- predict(knn, data.frame(x))
+  MSE[r, 1] = mean((y_test - y_pred)^2)
+  
+  #b) Linear regression 
+  slr <- lm(y ~ x, data = training)
+  y_pred <- predict(slr, data.frame(x))
+  MSE[r, 2] = mean((y_test - y_pred)^2)
+  
+  #c) Polynomial regression
+  plr <- lm(y ~ poly(x, 3), data = training)
+  y_pred <- predict(plr, data.frame(x))
+  MSE[r, 3] = mean((y_test - y_pred)^2)
+  
+  #d) Regression tree linear
+  rtl <- rpart(y ~ x, data = training)
+  y_pred <- predict(rtl, data.frame(x))
+  MSE[r, 4] = mean((y_test - y_pred)^2)
+}
+
+MSE <- data.frame(MSE)
+colnames(MSE) <- c("knn", "lmr", "polyr", "tlr")
+boxplot(MSE, main = "Predictive comparison of models")
+
+```
+
+#4.4. Comment on how each average test error compares with R∗
+
+$$
+\text{Since } R^*=\frac{9}{\pi^2} \sim 0.9 \text{ , we can easily see on the graph that each average test error is greater than  } R^*=0.9 .
+$$
+
+#Exersice3
+
+## DNA Data set
+
+```{r}
+library(mlbench)
+library(corrplot)
+```
+
+# 1. Download the dataset and open it.
+
+```{r}
+data(DNA)
+dim(DNA)
+str(DNA)
+```
+
+# 2. Provide a succinct description of the dimensionality of the data, sample size and homo-
+
+# geneity, featuring both type-homogeneity and scale homogeneity.
+
+```{r}
+c1= ncol(DNA)-1
+r1= nrow(DNA)
+```
+
+```{r}
+cat('\n The dimentionaly of the input space is', c1,'\n')
+cat('\n The sample size is', r1,'\n')
+cat('\n The data is type and scale homogeneous because all the variables in the dataset are all Factor with two levels "0" and "1"  \n')
+```
+
+# 3. Comment on the quintessentially important index κ := n/p.
+
+```{r}
+KAPPA<-r1/c1
+print(KAPPA)
+```
+
+```{r}
+#Comment: KAPPA=17.7>5, then the learning machine can predict well
+```
+
+# 4.Generate the basic graphical summaries (plots) of 9 of the variables in the data. (You
+
+#may select the 9 randomly the case of very large p)
+
+```{r}
+indice=sample(1:c1,size=9,replace = FALSE)
+names(DNA[indice])
+for(j in indice){
+  n <- names(DNA)[j]
+  barplot(table(DNA[,j]), col = "red", xlab = 'x', main = paste0("Plot of DNA", n))
+  
+}
+```
+
+# 5.Discuss correlations and multicollinearity
+
+#In this case, we cannot discuss about correlations and multicollinearity because the variables are categoricals.
+
+## BreastCancer Data set
+
+# 1. Download the dataset and open it.
+
+```{r}
+data(BreastCancer)
+dim(BreastCancer)
+str(BreastCancer)
+```
+
+# 2. Provide a succinct description of the dimensionality of the data, sample size and homo-
+
+# geneity, featuring both type-homogeneity and scale homogeneity.
+
+```{r}
+c2= ncol(BreastCancer)-1
+r2= nrow(BreastCancer)
+```
+
+```{r}
+cat('\n The dimentionaly of the input space is', c2,'\n')
+cat('\n The sample size is', r2,'\n')
+cat('\n The data is  type and scale non-homogeneous because  the variables in the dataset have different types (Factor and Ord.factor) with different levels   \n')
+cat('\n The response variable is', colnames(BreastCancer)[c2+1])
+```
+
+# 3. Comment on the quintessentially important index κ := n/p.
+
+```{r}
+KAPPA<-r2/c2
+print(KAPPA)
+```
+
+# Comment: KAPPA=69.9\>5, then the learning machine can predict well
+
+# 4. Generate the basic graphical summaries (plots) of 9 of the variables in the data. (You
+
+#may select the 9 randomly the case of very large p)
+
+```{r}
+indice=sample(1:c2,size=9,replace = FALSE)
+names(BreastCancer[indice])
+for(j in indice){
+  n <- names(BreastCancer)[j]
+  barplot(table(BreastCancer[,j]), col = "blue", xlab = 'x', main = paste0("Plot of BreastCancer", n))
+  
+}
+```
+
+# 5.Discuss correlations and multicollinearity
+
+#Once again, we cannot discuss correlations and multicollinearity because the variables are categoricals.
+
+## Spam
+
+# 1. Download the dataset and open it.
+
+```{r}
+spam<-read.csv('spam-classification-1.csv')
+str(spam)
+```
+
+# 2. Provide a succinct description of the dimensionality of the data, sample size and homo-
+
+# geneity, featuring both type-homogeneity and scale homogeneity.
+
+```{r}
+c3= ncol(spam)-1
+r3= nrow(spam)
+```
+
+```{r}
+cat('\n The dimentionaly of the input space is', c3,'\n')
+cat('\n The sample size is', r3,'\n')
+cat('\n The data is  type  homogeneous but not scale homogeneous because  the variables in the dataset are all of the same type but there is no level provided  \n')
+cat('\n The response variable is', colnames(spam)[c3+1])
+```
+
+# 3. Comment on the quintessentially important index κ := n/p.
+
+```{r}
+KAPPA<-r3/c3
+print(KAPPA)
+```
+
+# Comment: KAPPA= 80.7193\>5, then the learning machine can predict well
+
+# 4. Generate the basic graphical summaries (plots) of 9 of the variables in the data. (You
+
+#may select the 9 randomly the case of very large p)
+
+```{r}
+indice=sample(1:c3,size=9,replace = FALSE)
+names(spam[indice])
+for(j in indice){
+  n <- names(spam)[j]
+  hist((spam
+                [,j]), col = "blue", xlab = 'x', main = paste0("Plot of spam", n))
+  
+}
+```
+
+#5.
+
+```{r}
+variables<- sample(1: ncol(spam)-1,5)
+cor_matrix<- cor(spam[,variables])
+corrplot(cor_matrix, method= "circle", type="upper", tl.col= "blue")
+```
+
+## leukemia Data set
+
+# 1. Download the dataset and open it.
+
+```{r}
+leukemia<-read.csv('leukemia-data-1.csv')
+dim(leukemia)
+str(leukemia)
+```
+
+# 2. Provide a succinct description of the dimensionality of the data, sample size and homo-
+
+# geneity, featuring both type-homogeneity and scale homogeneity.
+
+```{r}
+c4= ncol(leukemia)-1
+r4= nrow(leukemia)
+```
+
+```{r}
+cat('\n The dimentionaly of the input space is', c4,'\n')
+cat('\n The sample size is', r4,'\n')
+cat('\n The data is type  homogeneous but not scale homogeneous because  the variables in the dataset are all of the same type but there is no level provided \n')
+cat('\n The response variable is', colnames(leukemia)[1])
+```
+
+# 3. Comment on the quintessentially important index κ := n/p.
+
+```{r}
+KAPPA<-r4/c4
+print(KAPPA)
+```
+
+# Comment: KAPPA= 0.02016242\<5, then the learning machine it not able to predict well
+
+# 4. Generate the basic graphical summaries (plots) of 9 of the variables in the data. (You
+
+#may select the 9 randomly the case of very large p)
+
+```{r}
+indice=sample(1:c4,size=9,replace = FALSE)
+names(leukemia[indice])
+for(j in indice){
+  n <- names(leukemia)[j]
+  hist((leukemia[,j]), col = "pink", xlab = 'x', main = paste0("Plot of leukemia", n))
+  
+}
+```
+
+# 5.
+
+```{r}
+variables<- sample(2: ncol(leukemia),5)
+cor_matrix<- cor(leukemia[,variables])
+corrplot(cor_matrix, method= "circle", type="upper", tl.col= "blue")
+```
+
+## prostate Data set
+
+# 1. Download the dataset and open it.
+
+```{r}
+prostate <- read.csv('prostate-cancer-1.csv')
+dim(prostate)
+str(prostate)
+```
+
+# 2. Provide a succinct description of the dimensionality of the data, sample size and homo-
+
+# geneity, featuring both type-homogeneity and scale homogeneity.
+
+```{r}
+c5= ncol(prostate)-1
+r5= nrow(prostate)
+```
+
+```{r}
+cat('\n The dimentionaly of the input space is', c5,'\n')
+cat('\n The sample size is', r5,'\n')
+cat('\n The data is type  homogeneous but not scale homogeneous because  the variables in the dataset are all of the same type but there is no level provided \n')
+#cat('\n The response variable is', colnames(prostate)[c5+1])
+```
+
+# 3. Comment on the quintessentially important index κ := n/p.
+
+```{r}
+KAPPA<-r5/c5
+print(KAPPA)
+```
+
+# Comment: KAPPA= 0.158\<5, then the learning machine can't predict well
+
+# 4. Generate the basic graphical summaries (plots) of 9 of the variables in the data. (You
+
+#may select the 9 randomly the case of very large p)
+
+```{r}
+indice=sample(1:c5,size=9,replace = FALSE)
+names(prostate[indice])
+for(j in indice){
+  n <- names(prostate)[j]
+  hist((prostate[,j]), col = "yellow", xlab = 'x', main = paste0("Plot of prostate",  n))
+  
+}
+```
+
+#5.
+
+```{r}
+variables<- sample(2: ncol(prostate),5)
+cor_matrix<- cor(prostate[,variables])
+corrplot(cor_matrix, method= "circle", type="upper", tl.col= "blue")
+```
+
+## Colon-cancer Data set
+
+# 1. Download the dataset and open it.
+
+```{r}
+colon <- read.csv('colon-cancer-1.csv')
+dim(colon)
+str(colon)
+```
+
+# 2. Provide a succinct description of the dimensionality of the data, sample size and homo-
+
+# geneity, featuring both type-homogeneity and scale homogeneity.
+
+```{r}
+c6= ncol(colon)-1
+r6= nrow(colon)
+```
+
+```{r}
+cat('\n The dimentionaly of the input space is', c6,'\n')
+cat('\n The sample size is', r6,'\n')
+cat('\n The data is type  homogeneous but not scale homogeneous because  the variables in the dataset are all of the same type but there is no level provided   \n')
+#cat('\n The response variable is', colnames(colon)[c6+1])
+```
+
+# 3. Comment on the quintessentially important index κ := n/p.
+
+```{r}
+KAPPA<-r6/c6
+print(KAPPA)
+```
+
+# Comment: KAPPA=0.031\< 5, then the learning machine can't predict well
+
+# 4. Generate the basic graphical summaries (plots) of 9 of the variables in the data. (You
+
+#may select the 9 randomly the case of very large p)
+
+```{r}
+indice=sample(1:c6,size=9,replace = FALSE)
+names(colon[indice])
+for(j in indice){
+  n <- names(colon)[j]
+  hist((colon [,j]), col = "green", xlab = 'x', main = paste0("Plot of colon",  n))
+}
+```
+
+# 5.Discuss correlations and multicollinearity
+
+```{r}
+variables<- sample(2: ncol(colon),5)
+cor_matrix<- cor(colon[,variables])
+corrplot(cor_matrix, method= "circle", type="upper", tl.col= "red")
+```
